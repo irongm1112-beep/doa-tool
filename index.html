@@ -32,7 +32,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-
 .k-organi .it.sel{outline-color:#0a0a08}
 .sep{width:1px;height:26px;background:var(--line);margin:0 2px}
 #status{font-size:13px;color:var(--mut);padding:0 6px;white-space:nowrap}
-#status.dirty{color:#e8b70f}#status.ro{color:#ff8a8a}
+#status.dirty{color:#e8b70f}#status.ro{color:#ff8a8a;cursor:pointer;text-decoration:underline dotted}
 main{flex:1;position:relative;overflow:hidden;touch-action:none;cursor:grab;background:radial-gradient(ellipse at 50% 40%,#1f1d14,#060605)}
 main.panning{cursor:grabbing}main.drawing{cursor:crosshair}
 #world{position:absolute;left:0;top:0;width:5000px;height:3200px;transform-origin:0 0;border-radius:4px}
@@ -952,7 +952,7 @@ function flash(m){flashMsg=m;status();clearTimeout(flashT);flashT=setTimeout(()=
 function status(){
  let t,c='';
  if(flashMsg)t=flashMsg;else if(uploading)t='Ajout de l\u2019image…';else if(ro){t='Lecture seule : modifs non gardées';c='ro'}
- else if(DB){if(dbErr){t='Connexion perdue : recharge la page';c='ro'}else if(!live)t='Connexion…';else if(dirty||flushing){t='Enregistrement…';c='dirty'}else t='En direct · à jour'}
+ else if(DB){if(dbErr==='revoked'){t='Accès retiré : recharge la page';c='ro'}else if(dbErr){t='Connexion perdue · reconnexion…';c='ro'}else if(!live)t='Connexion…';else if(dirty||flushing){t='Enregistrement…';c='dirty'}else t='En direct · à jour'}
  else if(!dbDone)t='Connexion…'
  else if(saving)t='Enregistrement…';else if(dirty){t='Modifié';c='dirty'}
  else if(artDone&&!art)t='Gardé sur cet appareil';else t='Enregistré';
@@ -989,7 +989,7 @@ async function flush(){
   for(const p of [...srv.keys()])if(!w.has(p)){const seg=p.split('/');srv.delete(p);inflight.delete(p);if(seg.length===2)jobs.push(()=>purgeBoard(seg[1]));jobs.push(()=>DB.doc(p).delete())}
   let i=0;const run=async()=>{while(i<jobs.length){const j=jobs[i++];await j()}};await Promise.all([run(),run(),run(),run()]);
   dirty=false}
- catch(e){const c=e&&e.code;if(c==='invalid_argument'||c==='permission-denied'){ro=true;flash('Tu peux consulter, mais pas modifier ce tableau')}else if(c==='quota_exceeded')flash('Espace plein : supprime des éléments ou des images');else if(c==='revoked'){dbErr=true}else setTimeout(scheduleFlush,1500+Math.random()*1500)}
+ catch(e){const c=e&&e.code;if(c==='invalid_argument'||c==='permission-denied'){ro=true;flash('Tu peux consulter, mais pas modifier ce tableau')}else if(c==='quota_exceeded')flash('Espace plein : supprime des éléments ou des images');else if(c==='revoked'){connLost(e)}else setTimeout(scheduleFlush,1500+Math.random()*1500)}
  flushing=false;status();if(dirty&&!ro)scheduleFlush()}
 async function purgeBoard(bid){for(const c of COLLS){try{const q=await DB.collection(`boards/${bid}/${c}`).get();for(const d of q.docs){const pp=`boards/${bid}/${c}/${d.id}`;srv.delete(pp);await DB.doc(pp).delete()}}catch(e){}}}
 function applyPending(){const b=B();if(b&&b.kind==='rapport'&&$('#home').hidden&&!docFocus())renderDoc()}
@@ -1033,7 +1033,22 @@ function subscribeBoard(bid){
     for(let i=arr.length-1;i>=0;i--){const x=arr[i],p=`boards/${bid}/${c}/${x.id}`;if(!ids.has(x.id)&&srv.has(p)){arr.splice(i,1);srv.delete(p);touched=true}}
     for(const d of snap.docs)touched=applyDoc(b,c,d.id,d.data())||touched}
    else for(const ch of snap.docChanges())touched=applyDoc(b,c,ch.doc.id,ch.type==='removed'?null:ch.doc.data())||touched;
-   if(touched&&bid===CUR)afterRemote(true)},e=>{if(e&&e.code==='revoked'){dbErr=true;status()}}))}}
+   if(dbErr&&dbErr!=='revoked'){dbErr=false;reconnDelay=2000;status()}
+   if(touched&&bid===CUR)afterRemote(true)},e=>connLost(e)))}}
+/* reconnexion automatique */
+let boardsGen=0,reconnT=null,reconnDelay=2000,hiddenAt=0;
+function startBoards(){const gen=++boardsGen;let first=true;try{unsubBoards&&unsubBoards()}catch(e){}
+ unsubBoards=DB.collection('boards').onSnapshot(s=>{if(gen!==boardsGen)return;if(dbErr&&dbErr!=='revoked'){dbErr=false;reconnDelay=2000;status()}
+  if(first){first=false;if(onBoards.done){reconcileBoards(s);return}}onBoards(s)},e=>{if(gen===boardsGen)connLost(e)})}
+function connLost(e){if(e&&e.code==='revoked'){dbErr='revoked';status();return}if(e&&e.code==='invalid_argument'){console.warn(e);}dbErr=true;status();if(reconnT)return;reconnT=setTimeout(()=>{reconnT=null;reconnect()},reconnDelay);reconnDelay=Math.min(30000,reconnDelay*2)}
+function reconnect(){clearTimeout(reconnT);reconnT=null;if(!DB||dbErr==='revoked')return;startBoards();if(CUR&&$('#home').hidden){subBoard=null;subscribeBoard(CUR)}if(dirty)scheduleFlush()}
+function reconcileBoards(s){const ids=new Set(s.docs.map(d=>d.id));let gone=false;
+ for(const b of [...S.boards]){const p='boards/'+b.id;if(!ids.has(b.id)&&srv.has(p)){S.boards=S.boards.filter(x=>x!==b);srv.delete(p);if(b.id===CUR)gone=true}}
+ for(const d of s.docs)mergeBoard(d.id,d.data());
+ if(gone&&$('#home').hidden){showHome();flash('Ce tableau a été supprimé par un collègue')}else if(!$('#home').hidden)showHome();else if(B()){renderAll();if(B().kind!=='rapport')tools()}}
+addEventListener('online',()=>{if(DB){reconnDelay=2000;reconnect()}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenAt=Date.now();return}if(DB&&(dbErr||Date.now()-hiddenAt>20000))reconnect()});
+[stEl,$('#hstatus')].forEach(el=>el.addEventListener('click',()=>{if(DB&&dbErr&&dbErr!=='revoked'){reconnDelay=2000;reconnect()}}));
 function applyDoc(b,c,id,raw){const p=`boards/${b.id}/${c}/${id}`,arr=b[c],i=arr.findIndex(x=>x.id===id);
  if(raw===null){srv.delete(p);inflight.delete(p);if(i<0)return false;if(editing===id||(drag&&drag.it&&drag.it.id===id))return false;arr.splice(i,1);if(sel===id)sel=null;return true}
  if(staleEcho(p,raw))return false;
@@ -1065,7 +1080,7 @@ if(cl){
   DB=d;status();
   try{USR=await cl.use('user');if(USR){myId=await USR.id();const me=await USR.me();if(me&&me.color)myColor=me.color}}catch(e){}
   try{if(USR){const w=await USR.can('data.write');if(w===false){ro=true;status()}}}catch(e){}
-  unsubBoards=DB.collection('boards').onSnapshot(onBoards,e=>{dbErr=true;status()});
+  startBoards();
   setTimeout(()=>{if(!live){status()}},10000)});
  Promise.resolve(cl.use('room')).catch(()=>null).then(r=>{if(!r)return;ROOM=r;myPresence({c:myColor,b:$('#home').hidden?CUR:null});r.onPeers(()=>paintPeers(),()=>{})});
 }
