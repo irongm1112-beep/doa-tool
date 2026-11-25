@@ -15,11 +15,11 @@ Site de la Drug Observation Agency : tableaux d'enquête, plans d'assaut, organi
 
 1. Connecte-toi sur [github.com](https://github.com) (ou crée un compte gratuit).
 2. En haut à droite, clique sur **+** puis **New repository**.
-3. Nom du dépôt : `doa-tableau`. Coche **Public** (GitHub Pages gratuit demande un dépôt public), puis clique sur **Create repository**.
+3. Nom du dépôt : `doa-tool`. Coche **Public** (GitHub Pages gratuit demande un dépôt public), puis clique sur **Create repository**.
 4. Sur la page du dépôt, clique sur **uploading an existing file** (ou **Add file → Upload files**).
 5. Glisse les fichiers `index.html`, `config.js`, `firestore.rules`, `README.md` et `logo-doa.png`, puis clique sur **Commit changes**.
 6. Va dans **Settings → Pages**. Sous **Build and deployment**, choisis **Source : Deploy from a branch**, branche **main**, dossier **/ (root)**, puis **Save**.
-7. Attends une à deux minutes et recharge la page : l'adresse du site s'affiche en haut, du type `https://TON-PSEUDO.github.io/doa-tableau/`.
+7. Attends une à deux minutes et recharge la page : l'adresse du site s'affiche en haut, du type `https://TON-PSEUDO.github.io/doa-tool/`.
 
 À ce stade, le site marche déjà. Sans Firebase, **chaque personne garde ses propres tableaux dans son navigateur** : rien n'est partagé.
 
